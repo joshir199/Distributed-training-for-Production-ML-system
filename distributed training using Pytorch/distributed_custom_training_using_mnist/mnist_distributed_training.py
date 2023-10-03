@@ -1,5 +1,5 @@
 import os
-
+import argparse
 import torch
 import torch.multiprocessing as mp
 from torch.nn.parallel import DistributedDataParallel as DDP
@@ -127,14 +127,25 @@ def run_step(model_fn, world_size, img_size, batch_size, max_epochs, save_step):
 
 if __name__ == '__main__':
     print(" DDP Program starts ")
+    parser = argparse.ArgumentParser(description="Distributed Data Parallel strategy for training ML model")
+    parser.add_argument('--seed', type=int, default=33, help='random seed')
+    parser.add_argument('--batch_size', type=int, default=64, help='batch size')
+    parser.add_argument('--train', action='store_true', help='Distributed training')
+    parser.add_argument('--max_epoch', type=int, default=10, help='max number of training cycle over entire dataset')
+    parser.add_argument('--saving_step', type=int, default=10, help='Steps at which checkpoints will be saved')
 
-    device, world_size = verify_gpu_devices()
+    args = parser.parse_args()
+
     img_size = 16
-    batch_size = 32
-    max_epochs = 10
-    saving_step = 5
+    seed = args.seed
+    batch_size = args.batch_size
+    max_epochs = args.max_epoch
+    saving_step = args.saving_step
 
-    if device.type == 'cuda' and world_size >= 2:
+    torch.manual_seed(seed)
+    device, world_size = verify_gpu_devices()
+
+    if args.train and device.type == 'cuda' and world_size >= 2:
         print(" System Setup satisfies the single node & multi-processes training design")
         run_step(training_step_DDP, world_size, img_size, batch_size, max_epochs, saving_step)
     else:
@@ -144,4 +155,4 @@ if __name__ == '__main__':
     # First install required Libraries:
     # ->  torch, torchvision, matplotlib
     # Now, run below script for DDP training on multiple GPUs
-    # -> python3 mnist_distributed_training.py
+    # -> python3 mnist_distributed_training.py --train --batch_size 16 --max_epoch 20 --saving_step 5
