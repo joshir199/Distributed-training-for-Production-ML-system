@@ -72,7 +72,14 @@ def get_data_loader(dataset, batch_size):
                       sampler=DistributedSampler(dataset))
 
 
-def training_step_DDP(rank, world_size, img_size, batch_size, max_epochs):
+def save_checkpoints(model, epoch):
+    chkp = model.module.state_dict()
+    path = "./output/checkpoint.pt"
+    torch.save(chkp, path)
+    print("Training checkpoint saved at step : ", epoch)
+
+
+def training_step_DDP(rank, world_size, img_size, batch_size, max_epochs, saving_step):
     print("starts training step for device rank: ", rank)
 
     setup_ddp(rank, world_size)
@@ -99,19 +106,23 @@ def training_step_DDP(rank, world_size, img_size, batch_size, max_epochs):
             batch_loss = training_step_per_batch(model_ddp, optimizer, images, labels, loss_fn)
             losses_list.append(batch_loss)
 
+        # Save Checkpoints at every saving_step
+        if rank == 0 and (epoch + 1) % saving_step == 0:
+            save_checkpoints(model_ddp, epoch)
+
     print("Accumulated losses list size: ", len(losses_list))
     HelperFunctions.save_loss_graph(losses_list)
 
     clear_process()
 
 
-def run_step(model_fn, world_size, img_size, batch_size, max_epochs):
+def run_step(model_fn, world_size, img_size, batch_size, max_epochs, save_step):
     """
     :param model_fn: function that needs to be called in a distributed manner
     :param world_size: total number of processes
     """
     print("run_step called, world_size: ", world_size)
-    mp.spawn(model_fn, args=(world_size, img_size, batch_size, max_epochs), nprocs=world_size, join=True)
+    mp.spawn(model_fn, args=(world_size, img_size, batch_size, max_epochs, save_step), nprocs=world_size, join=True)
 
 
 if __name__ == '__main__':
@@ -121,10 +132,11 @@ if __name__ == '__main__':
     img_size = 16
     batch_size = 32
     max_epochs = 10
+    saving_step = 5
 
     if device.type == 'cuda' and world_size >= 2:
         print(" System Setup satisfies the single node & multi-processes training design")
-        run_step(training_step_DDP, world_size, img_size, batch_size, max_epochs)
+        run_step(training_step_DDP, world_size, img_size, batch_size, max_epochs, saving_step)
     else:
         print(" other cases needs to be handled differently")
 
